@@ -1,11 +1,11 @@
 Config(
 	//You probably want to change the follwoing options
 	//File Paths
-	path_to_bin_target:                     "./test",
+	path_to_bin_target:                     "/out/fuzz",
 	arguments: 				[ "@@"],	//"@@" will be exchanged with the path of a file containing the current input
 
-	path_to_grammar:                        "grammars/grammar_py_example.py",
-	path_to_workdir:                        "/tmp/workdir",
+	path_to_grammar:                        "/out/grammar.py",
+	path_to_workdir:                        "/out/out",
 
 	number_of_threads:			1,
 	timeout_in_millis:			200,
@@ -22,6 +22,4 @@ Config(
 	number_of_generate_inputs:		100,	//see main.rs fuzzing_thread 
 	max_tree_size:				1000, 	//see state.rs generate random
 	number_of_deterministic_mutations:	1,	//see main.rs process_input
-	
-
 )
