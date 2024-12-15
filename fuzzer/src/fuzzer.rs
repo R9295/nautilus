@@ -70,7 +70,7 @@ impl Fuzzer {
         let fs = ForkServer::new(
             path.clone(),
             args.clone(),
-            true,
+            false,
             timeout_in_millis,
             bitmap_size,
         );
@@ -344,13 +344,15 @@ impl Fuzzer {
             if (run_bitmap[i] != 0) && (*elem == 0) {
                 *elem |= run_bitmap[i];
                 res.push(i);
-                //println!("Added new bit to bitmap. Is Crash: {:?}; Added bit: {:?}", is_crash, i);
+                println!("Added new bit to bitmap. Is Crash: {:?}; Added bit: {:?}", is_crash, i);
             }
         }
 
         if res.len() > 0 {
-            //print!("New path found:\nNew bits: {:?}\n", res);
+            println!("New path found:\nNew bits: {:?}\n", res);
             return Some(res);
+        } else {
+            println!("no")
         }
         return None;
     }
