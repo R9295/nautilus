@@ -186,7 +186,8 @@ impl Fuzzer {
                 }
             }
             ExitReason::Timeouted => {
-                self.global_state
+                // LETS IGNORE ALL TIMEOUTS
+                /* self.global_state
                     .lock()
                     .expect("RAND_1706238230")
                     .last_timeout =
@@ -196,7 +197,7 @@ impl Fuzzer {
                     self.work_dir, self.execution_count
                 ))
                 .expect("RAND_452993103");
-                tree.unparse_to(ctx, &mut file);
+                tree.unparse_to(ctx, &mut file); */
             }
             ExitReason::Signaled(sig) => {
                 if new_bits.is_some() {
