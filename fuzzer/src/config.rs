@@ -1,6 +1,7 @@
 // Nautilus
 // Copyright (C) 2024  Daniel Teuchert, Cornelius Aschermann, Sergej Schumilo
 
+use serde::Deserialize;
 #[derive(Deserialize, Clone)]
 pub struct Config {
     pub number_of_threads: u8,

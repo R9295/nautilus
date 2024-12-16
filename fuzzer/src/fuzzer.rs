@@ -1,8 +1,6 @@
 // Nautilus
 // Copyright (C) 2024  Daniel Teuchert, Cornelius Aschermann, Sergej Schumilo
 
-extern crate time as othertime;
-use othertime::strftime;
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -18,7 +16,7 @@ use forksrv::newtypes::SubprocessError;
 use forksrv::ForkServer;
 use grammartec::context::Context;
 use grammartec::tree::TreeLike;
-use shared_state::GlobalSharedState;
+use crate::shared_state::GlobalSharedState;
 
 pub enum ExecutionReason {
     Havoc,
@@ -146,7 +144,7 @@ impl Fuzzer {
                     self.global_state
                         .lock()
                         .expect("RAND_202860771")
-                        .last_found_asan = strftime("[%Y-%m-%d] %H:%M:%S", &othertime::now())
+                        .last_found_asan = time::strftime("[%Y-%m-%d] %H:%M:%S", &time::now())
                         .expect("RAND_2888070412");
                     let mut file = File::create(format!(
                         "{}/outputs/signaled/ASAN_{:09}_{}",
@@ -191,7 +189,7 @@ impl Fuzzer {
                     .lock()
                     .expect("RAND_1706238230")
                     .last_timeout =
-                    strftime("[%Y-%m-%d] %H:%M:%S", &othertime::now()).expect("RAND_1894162412");
+                    time::strftime("[%Y-%m-%d] %H:%M:%S", &time::now()).expect("RAND_1894162412");
                 let mut file = File::create(format!(
                     "{}/outputs/timeout/{:09}",
                     self.work_dir, self.execution_count
@@ -209,7 +207,7 @@ impl Fuzzer {
                         .lock()
                         .expect("RAND_4287051369")
                         .last_found_sig =
-                        strftime("[%Y-%m-%d] %H:%M:%S", &othertime::now()).expect("RAND_76391000");
+                        time::strftime("[%Y-%m-%d] %H:%M:%S", &time::now()).expect("RAND_76391000");
                     let mut file = File::create(format!(
                         "{}/outputs/signaled/{:?}_{:09}",
                         self.work_dir, sig, self.execution_count

@@ -3,6 +3,7 @@ name = "fuzzer"
 version = "0.1.0"
 authors = ["coco <coco@hexgolems.com>"]
 default-run = "fuzzer"
+edition = "2021"
 
 [dependencies]
 nix = "0.17.0"

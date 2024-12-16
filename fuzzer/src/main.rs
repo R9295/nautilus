@@ -1,10 +1,6 @@
 // Nautilus
 // Copyright (C) 2024  Daniel Teuchert, Cornelius Aschermann, Sergej Schumilo
 
-extern crate forksrv;
-extern crate grammartec;
-extern crate serde_json;
-extern crate time as othertime;
 #[macro_use]
 extern crate serde_derive;
 extern crate clap;
@@ -17,10 +13,9 @@ mod python_grammar_loader;
 mod queue;
 mod shared_state;
 mod state;
-
 use config::Config;
 use forksrv::newtypes::SubprocessError;
-use fuzzer::Fuzzer;
+use crate::fuzzer::Fuzzer;
 use grammartec::chunkstore::ChunkStoreWrapper;
 use grammartec::context::Context;
 use queue::{InputState, QueueItem};
@@ -34,8 +29,8 @@ use std::io::Read;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
-use std::{thread, time};
+use std::time::{Duration, Instant};
+use std::{thread};
 
 fn process_input(
     state: &mut FuzzingState,
@@ -224,7 +219,7 @@ fn main() {
 
     println!(
         "{} Starting Fuzzing...",
-        othertime::now()
+        time::now()
             .strftime("[%Y-%m-%d] %H:%M:%S")
             .expect("RAND_1939191497")
     );
@@ -336,7 +331,7 @@ fn main() {
             .name("status_thread".to_string())
             .spawn(move || {
                 let start_time = Instant::now();
-                thread::sleep(time::Duration::from_secs(1));
+                thread::sleep(Duration::from_secs(1));
                 print!("{}[2J", 27 as char);
                 print!("{}[H", 27 as char);
                 loop {
@@ -474,7 +469,7 @@ fn main() {
                     );
                     println!("------------------------------------------------------    ");
                     //println!("Global bitmap: {:?}", global_state.lock().expect("RAND_1887203473").bitmaps.get(&false).expect("RAND_1887203473"));
-                    thread::sleep(time::Duration::from_secs(1));
+                    thread::sleep(Duration::from_secs(1));
                 }
             })
             .expect("RAND_3541874337")

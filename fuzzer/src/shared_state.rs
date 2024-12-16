@@ -1,7 +1,7 @@
 // Nautilus
 // Copyright (C) 2024  Daniel Teuchert, Cornelius Aschermann, Sergej Schumilo
 
-use queue::Queue;
+use crate::queue::Queue;
 use std::collections::HashMap;
 
 pub struct GlobalSharedState {
