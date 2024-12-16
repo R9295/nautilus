@@ -19,6 +19,8 @@ argparse = "0.2.2"
 ron = "*"
 clap = "2.33.1"
 pyo3 = "0.21.2"
+libafl_bolts = "0.14.1"
+libafl = "0.14.1"
 
 [[bin]]
 name = "fuzzer"

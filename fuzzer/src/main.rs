@@ -13,11 +13,18 @@ mod python_grammar_loader;
 mod queue;
 mod shared_state;
 mod state;
+use crate::fuzzer::Fuzzer;
 use config::Config;
 use forksrv::newtypes::SubprocessError;
-use crate::fuzzer::Fuzzer;
 use grammartec::chunkstore::ChunkStoreWrapper;
 use grammartec::context::Context;
+use libafl::executors::ForkserverExecutor;
+use libafl::inputs::{BytesInput, NopTargetBytesConverter};
+use libafl::observers::StdMapObserver;
+use libafl::state::NopState;
+use libafl_bolts::shmem::{ShMem, ShMemProvider, UnixShMemProvider};
+use libafl_bolts::tuples::{tuple_list, Handled};
+use libafl_bolts::AsSliceMut;
 use queue::{InputState, QueueItem};
 use shared_state::GlobalSharedState;
 use state::FuzzingState;
@@ -29,13 +36,19 @@ use std::io::Read;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::{Duration, Instant};
-use std::{thread};
 
 fn process_input(
     state: &mut FuzzingState,
     inp: &mut QueueItem,
     config: &Config,
+    /* executor: ForkserverExecutor<
+        NopTargetBytesConverter<BytesInput>,
+        (StdMapObserver<u8, false>),
+        NopState<BytesInput>,
+        UnixShMemProvider, 
+    >,*/
 ) -> Result<(), SubprocessError> {
     match inp.state {
         InputState::Init(start_index) => {
@@ -79,8 +92,28 @@ fn fuzzing_thread(
 ) {
     let path_to_bin_target = config.path_to_bin_target.to_owned();
     let args = config.arguments.clone();
+    
+    let mut shmem_provider = UnixShMemProvider::new().unwrap();
+    let mut shmem = shmem_provider.new_shmem(config.bitmap_size).unwrap();
+    shmem.write_to_env("__AFL_SHM_ID").unwrap();
+    let shmem_buf = shmem.as_slice_mut();
 
-    let fuzzer = Fuzzer::new(
+    let edges_observer = unsafe { StdMapObserver::new("edges", shmem_buf) };
+    let handle = edges_observer.handle();
+    let executor = ForkserverExecutor::builder()
+        .program(config.path_to_bin_target.clone())
+        .coverage_map_size(config.bitmap_size)
+        .is_persistent(true)
+        .is_deferred_frksrv(true)
+        .timeout(Duration::from_millis(config.timeout_in_millis))
+        .shmem_provider(&mut shmem_provider)
+        .min_input_size(1)
+        .build::<_, NopState<BytesInput>>(tuple_list!(edges_observer))
+        .unwrap();
+
+    let mut fuzzer = Fuzzer::new(
+        executor,
+        handle,
         path_to_bin_target.clone(),
         args,
         global_state.clone(),
@@ -89,30 +122,20 @@ fn fuzzing_thread(
         config.bitmap_size.clone(),
     )
     .expect("RAND_3617502350");
-    let mut state = FuzzingState::new(fuzzer, config.clone(), cks.clone());
+
+
+    let mut state = FuzzingState::new(&mut fuzzer, config.clone(), cks.clone());
     state.ctx = ctx.clone();
     let mut old_execution_count = 0;
     let mut old_executions_per_sec = 0;
-    //Normal mode
+
+    // Normal mode
     loop {
         let inp = global_state.lock().expect("RAND_2191486322").queue.pop();
         if let Some(mut inp) = inp {
             //If subprocess died restart forkserver
             if process_input(&mut state, &mut inp, &config).is_err() {
-                let args = vec![];
-                let fuzzer = Fuzzer::new(
-                    path_to_bin_target.clone(),
-                    args,
-                    global_state.clone(),
-                    config.path_to_workdir.clone(),
-                    config.timeout_in_millis.clone(),
-                    config.bitmap_size.clone(),
-                )
-                .expect("RAND_3077320530");
-                state = FuzzingState::new(fuzzer, config.clone(), cks.clone());
-                state.ctx = ctx.clone();
-                old_execution_count = 0;
-                old_executions_per_sec = 0;
+                unreachable!()
             }
             global_state
                 .lock()
@@ -123,20 +146,7 @@ fn fuzzing_thread(
             for _ in 0..config.number_of_generate_inputs {
                 //If subprocess dies restart forkserver
                 if state.generate_random("START").is_err() {
-                    let args = vec![];
-                    let fuzzer = Fuzzer::new(
-                        path_to_bin_target.clone(),
-                        args,
-                        global_state.clone(),
-                        config.path_to_workdir.clone(),
-                        config.timeout_in_millis.clone(),
-                        config.bitmap_size.clone(),
-                    )
-                    .expect("RAND_357619639");
-                    state = FuzzingState::new(fuzzer, config.clone(), cks.clone());
-                    state.ctx = ctx.clone();
-                    old_execution_count = 0;
-                    old_executions_per_sec = 0;
+                    unreachable!()
                 }
             }
             global_state
@@ -183,7 +193,6 @@ fn fuzzing_thread(
 }
 
 fn main() {
-    
     pyo3::prepare_freethreaded_python();
 
     //Parse parameters

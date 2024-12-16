@@ -12,6 +12,7 @@ use grammartec::context::Context;
 use grammartec::recursion_info::RecursionInfo;
 use grammartec::tree::Tree;
 use grammartec::tree::TreeLike;
+use libafl::executors::ExitKind;
 
 #[derive(Serialize, Clone, Deserialize)]
 pub enum InputState {
@@ -25,7 +26,7 @@ pub struct QueueItem {
     pub tree: Tree,
     pub fresh_bits: HashSet<usize>,
     pub all_bits: Vec<u8>,
-    pub exitreason: ExitReason,
+    pub exitreason: ExitKind,
     pub state: InputState,
     pub recursions: Option<Vec<RecursionInfo>>,
     pub execution_time: u32,
@@ -37,7 +38,7 @@ impl QueueItem {
         tree: Tree,
         fresh_bits: HashSet<usize>,
         all_bits: Vec<u8>,
-        exitreason: ExitReason,
+        exitreason: ExitKind,
         execution_time: u32,
     ) -> Self {
         return QueueItem {
@@ -66,7 +67,7 @@ impl Queue {
         &mut self,
         tree: Tree,
         all_bits: Vec<u8>,
-        exitreason: ExitReason,
+        exitreason: ExitKind,
         ctx: &Context,
         execution_time: u32,
     ) {

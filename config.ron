@@ -1,11 +1,11 @@
 Config(
 	//You probably want to change the follwoing options
 	//File Paths
-	path_to_bin_target:                     "/out/fuzz",
+	path_to_bin_target:                     "/tmp/nautilus/fuzz",
 	arguments: 				[ "@@"],	//"@@" will be exchanged with the path of a file containing the current input
 
-	path_to_grammar:                        "/out/grammar.py",
-	path_to_workdir:                        "/out/out",
+	path_to_grammar:                        "/tmp/nautilus/grammar.py",
+	path_to_workdir:                        "/tmp/nautilus/out",
 
 	number_of_threads:			1,
 	timeout_in_millis:			1000,

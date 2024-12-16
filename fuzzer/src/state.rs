@@ -17,16 +17,16 @@ use forksrv::newtypes::SubprocessError;
 use crate::fuzzer::{ExecutionReason, Fuzzer};
 use crate:: queue::QueueItem;
 
-pub struct FuzzingState {
+pub struct FuzzingState<'a> {
     pub cks: Arc<ChunkStoreWrapper>,
     pub ctx: Context,
     pub config: Config,
-    pub fuzzer: Fuzzer,
+    pub fuzzer: &'a mut Fuzzer<'a>,
     pub mutator: Mutator,
 }
 
-impl FuzzingState {
-    pub fn new(fuzzer: Fuzzer, config: Config, cks: Arc<ChunkStoreWrapper>) -> Self {
+impl<'a> FuzzingState<'a> {
+    pub fn new(fuzzer: &'a mut Fuzzer<'a>, config: Config, cks: Arc<ChunkStoreWrapper>) -> Self {
         let ctx = Context::new();
         let mutator = Mutator::new(&ctx);
         return FuzzingState {
@@ -44,6 +44,7 @@ impl FuzzingState {
         input: &mut QueueItem,
         start_index: usize,
         end_index: usize,
+        
     ) -> Result<bool, SubprocessError> {
         let ctx = &mut self.ctx;
         let fuzzer = &mut self.fuzzer;

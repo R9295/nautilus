@@ -1,22 +1,32 @@
 // Nautilus
 // Copyright (C) 2024  Daniel Teuchert, Cornelius Aschermann, Sergej Schumilo
 
-
+use crate::shared_state::GlobalSharedState;
+use forksrv::newtypes::SubprocessError;
+use forksrv::ForkServer;
+use grammartec::context::Context;
+use grammartec::tree::TreeLike;
+use libafl::events::NopEventManager;
+use libafl::executors::Executor;
+use libafl::executors::ExitKind;
+use libafl::executors::ForkserverExecutor;
+use libafl::executors::HasObservers;
+use libafl::inputs::BytesInput;
+use libafl::inputs::NopTargetBytesConverter;
+use libafl::observers::ObserversTuple;
+use libafl::observers::StdMapObserver;
+use libafl::state::NopState;
+use libafl::NopFuzzer;
+use libafl_bolts::shmem::UnixShMemProvider;
+use libafl_bolts::tuples::Handle;
+use libafl_bolts::tuples::MatchNameRef;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::stdout;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Instant;
-
-use forksrv::exitreason::ExitReason;
-use forksrv::newtypes::SubprocessError;
-use forksrv::ForkServer;
-use grammartec::context::Context;
-use grammartec::tree::TreeLike;
-use crate::shared_state::GlobalSharedState;
 
 pub enum ExecutionReason {
     Havoc,
@@ -28,8 +38,14 @@ pub enum ExecutionReason {
     Gen,
 }
 
-pub struct Fuzzer {
-    forksrv: ForkServer,
+pub struct Fuzzer<'a> {
+    forkserver: ForkserverExecutor<
+        NopTargetBytesConverter<BytesInput>,
+        (StdMapObserver<'a, u8, false>, ()),
+        NopState<BytesInput>,
+        UnixShMemProvider,
+    >,
+    handle: Handle<StdMapObserver<'a, u8, false>>,
     last_tried_inputs: HashSet<Vec<u8>>,
     last_inputs_ring_buffer: VecDeque<Vec<u8>>,
     pub global_state: Arc<Mutex<GlobalSharedState>>,
@@ -56,8 +72,15 @@ pub struct Fuzzer {
     work_dir: String,
 }
 
-impl Fuzzer {
+impl<'a> Fuzzer<'a> {
     pub fn new(
+        forkserver: ForkserverExecutor<
+            NopTargetBytesConverter<BytesInput>,
+            (StdMapObserver<'a, u8, false>, ()),
+            NopState<BytesInput>,
+            UnixShMemProvider,
+        >,
+        handle: Handle<StdMapObserver<'a, u8, false>>,
         path: String,
         args: Vec<String>,
         global_state: Arc<Mutex<GlobalSharedState>>,
@@ -65,15 +88,9 @@ impl Fuzzer {
         timeout_in_millis: u64,
         bitmap_size: usize,
     ) -> Result<Self, SubprocessError> {
-        let fs = ForkServer::new(
-            path.clone(),
-            args.clone(),
-            false,
-            timeout_in_millis,
-            bitmap_size,
-        );
         return Ok(Fuzzer {
-            forksrv: fs,
+            forkserver,
+            handle,
             last_tried_inputs: HashSet::new(),
             last_inputs_ring_buffer: VecDeque::new(),
             global_state,
@@ -134,29 +151,7 @@ impl Fuzzer {
     ) -> Result<(), SubprocessError> {
         let (new_bits, term_sig) = self.exec(code, tree, ctx)?;
         match term_sig {
-            ExitReason::Normal(223) => {
-                if new_bits.is_some() {
-                    //ASAN
-                    self.global_state
-                        .lock()
-                        .expect("RAND_3390206382")
-                        .total_found_asan += 1;
-                    self.global_state
-                        .lock()
-                        .expect("RAND_202860771")
-                        .last_found_asan = time::strftime("[%Y-%m-%d] %H:%M:%S", &time::now())
-                        .expect("RAND_2888070412");
-                    let mut file = File::create(format!(
-                        "{}/outputs/signaled/ASAN_{:09}_{}",
-                        self.work_dir,
-                        self.execution_count,
-                        thread::current().name().expect("RAND_4086695190")
-                    ))
-                    .expect("RAND_3096222153");
-                    tree.unparse_to(ctx, &mut file);
-                }
-            }
-            ExitReason::Normal(_) => {
+            ExitKind::Ok => {
                 if new_bits.is_some() {
                     match exec_reason {
                         ExecutionReason::Havoc => {
@@ -183,7 +178,7 @@ impl Fuzzer {
                     }
                 }
             }
-            ExitReason::Timeouted => {
+            ExitKind::Timeout => {
                 // LETS IGNORE ALL TIMEOUTS
                 /* self.global_state
                     .lock()
@@ -197,7 +192,7 @@ impl Fuzzer {
                 .expect("RAND_452993103");
                 tree.unparse_to(ctx, &mut file); */
             }
-            ExitReason::Signaled(sig) => {
+            ExitKind::Crash | ExitKind::Oom => {
                 if new_bits.is_some() {
                     self.global_state
                         .lock()
@@ -210,13 +205,13 @@ impl Fuzzer {
                         time::strftime("[%Y-%m-%d] %H:%M:%S", &time::now()).expect("RAND_76391000");
                     let mut file = File::create(format!(
                         "{}/outputs/signaled/{:?}_{:09}",
-                        self.work_dir, sig, self.execution_count
+                        self.work_dir, 0, self.execution_count
                     ))
                     .expect("RAND_3690294970");
                     tree.unparse_to(ctx, &mut file);
                 }
             }
-            ExitReason::Stopped(_sig) => {}
+            _ => {}
         }
         stdout().flush().expect("RAND_2937475131");
         return Ok(());
@@ -230,7 +225,8 @@ impl Fuzzer {
         ctx: &Context,
     ) -> Result<bool, SubprocessError> {
         self.run_on_without_dedup(tree, exec_reason, ctx)?;
-        let run_bitmap = self.forksrv.get_shared();
+        let observers = self.forkserver.observers();
+        let run_bitmap = observers.get(&self.handle).unwrap().map();
         let mut found_all = true;
         for bit in bits.iter() {
             if run_bitmap[*bit] == 0 {
@@ -241,12 +237,24 @@ impl Fuzzer {
         return Ok(found_all);
     }
 
-    pub fn exec_raw<'a>(&'a mut self, code: &[u8]) -> Result<(ExitReason, u32), SubprocessError> {
+    pub fn exec_raw(&mut self, code: &[u8]) -> Result<(ExitKind, u32), SubprocessError> {
         self.execution_count += 1;
 
         let start = Instant::now();
-
-        let exitreason = self.forksrv.run(&code)?;
+        if code.len() == 0 {
+            return Ok((ExitKind::Ok, 0));
+        }
+        let input = BytesInput::from(code);
+        let _ = self.forkserver.observers_mut().pre_exec_all(&mut NopState::<BytesInput>::new(), &input).unwrap();
+        let exitreason = self
+            .forkserver
+            .run_target(
+                &mut NopFuzzer::new(),
+                &mut NopState::new(),
+                &mut NopEventManager::new(),
+                &BytesInput::from(code),
+            )
+            .unwrap();
 
         let execution_time = start.elapsed().subsec_nanos();
 
@@ -279,21 +287,22 @@ impl Fuzzer {
         code: &[u8],
         tree_like: &T,
         ctx: &Context,
-    ) -> Result<(Option<Vec<usize>>, ExitReason), SubprocessError> {
+    ) -> Result<(Option<Vec<usize>>, ExitKind), SubprocessError> {
         let (exitreason, execution_time) = self.exec_raw(&code)?;
 
         let is_crash = match exitreason {
-            ExitReason::Normal(223) => true,
-            ExitReason::Signaled(_) => true,
+            ExitKind::Oom => true,
+            ExitKind::Crash => true,
             _ => false,
         };
 
         let mut final_bits = None;
         if let Some(mut new_bits) = self.new_bits(is_crash) {
             //Only if not Timeout
-            if exitreason != ExitReason::Timeouted {
+            if exitreason != ExitKind::Timeout {
                 //Check for non deterministic bits
-                let old_bitmap: Vec<u8> = self.forksrv.get_shared().to_vec();
+                let observers = self.forkserver.observers();
+                let old_bitmap = observers.get(&self.handle).unwrap().map().to_vec();
                 self.check_deterministic_behaviour(&old_bitmap, &mut new_bits, &code)?;
                 if new_bits.len() > 0 {
                     final_bits = Some(new_bits);
@@ -318,10 +327,11 @@ impl Fuzzer {
     ) -> Result<(), SubprocessError> {
         for _ in 0..5 {
             let (_, _) = self.exec_raw(code)?;
-            let run_bitmap = self.forksrv.get_shared();
+            let observers = self.forkserver.observers();
+            let run_bitmap = observers.get(&self.handle).unwrap().map();
             for (i, &v) in old_bitmap.iter().enumerate() {
                 if run_bitmap[i] != v {
-                    println!("found fucky bit {}", i);
+/*                     println!("found fucky bit {}", i); */
                 }
             }
             new_bits.retain(|&i| run_bitmap[i] != 0);
@@ -331,7 +341,8 @@ impl Fuzzer {
 
     pub fn new_bits(&mut self, is_crash: bool) -> Option<Vec<usize>> {
         let mut res = vec![];
-        let run_bitmap = self.forksrv.get_shared();
+        let observers = self.forkserver.observers();
+        let run_bitmap = observers.get(&self.handle).unwrap().map();
         let mut gstate_lock = self.global_state.lock().expect("RAND_2040280272");
         let shared_bitmap = gstate_lock
             .bitmaps
@@ -342,15 +353,13 @@ impl Fuzzer {
             if (run_bitmap[i] != 0) && (*elem == 0) {
                 *elem |= run_bitmap[i];
                 res.push(i);
-                println!("Added new bit to bitmap. Is Crash: {:?}; Added bit: {:?}", is_crash, i);
+/*                 println!("Added new bit to bitmap. Is Crash: {:?}; Added bit: {:?}", is_crash, i); */
             }
         }
 
         if res.len() > 0 {
-            println!("New path found:\nNew bits: {:?}\n", res);
             return Some(res);
         } else {
-            println!("no")
         }
         return None;
     }
