@@ -5,7 +5,7 @@ Config(
 	arguments: 				[ "@@"],	//"@@" will be exchanged with the path of a file containing the current input
 
 	path_to_grammar:                        "/out/grammar.py",
-	path_to_workdir:                        "/out/out",
+	path_to_workdir:                        "/out/corpus",
 
 	number_of_threads:			1,
 	timeout_in_millis:			1000,
