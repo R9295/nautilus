@@ -49,7 +49,6 @@ impl ChunkStore {
     }
 
     pub fn add_tree(&mut self, tree: Tree, ctx: &Context) {
-        println!("ADDING TREE");
         let mut buffer = vec![];
         let id = self.trees.len();
         let mut contains_new_chunk = false;
